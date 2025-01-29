@@ -18,6 +18,7 @@ from tkinter import messagebox
 from tkinter import ttk
 import tkinter.font
 from typing import Callable, Dict, List, Union
+import webbrowser
 
 from filelock import FileLock
 import httpx
@@ -944,6 +945,10 @@ class OpenPectusEngineManagerGui(tk.Tk):
             command=settings_window.start
         )
         file_menu.add_command(
+            label="Open Aggregator",
+            command=self._open_aggregator
+        )
+        file_menu.add_command(
             label="Load UOD",
             command=self._load_engines
         )
@@ -1039,6 +1044,20 @@ class OpenPectusEngineManagerGui(tk.Tk):
                 return
         self.icon.stop()
         self.after(0, self.destroy)
+
+    def _open_aggregator(self):
+        url = self.persistent_data["aggregator_hostname"]
+        if self.persistent_data["aggregator_secure"]:
+            url = "https://"+url
+        else:
+            url = "http://"+url
+        if self.persistent_data["aggregator_secure"] and self.persistent_data["aggregator_port"] == 443:
+            pass
+        elif self.persistent_data["aggregator_port"] == 80:
+            pass
+        else:
+            url = url+':'+self.persistent_data["aggregator_port"]
+        webbrowser.open(url)
 
     def _close_window(self):
         if False and self.ask_before_exit():
