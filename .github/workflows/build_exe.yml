@@ -25,6 +25,11 @@ jobs:
           cd dist
           cd "Pectus Engine Manager"
           tar.exe -a -c -f ../../engine_manager.zip "_internal" "Pectus Engine Manager.exe"
+      - name: Archive application zip file
+        uses: actions/upload-artifact@v4
+        with:
+          name: application
+          path: "engine_manager.zip"
       - uses: ncipollo/release-action@v1
         with:
           artifacts: "engine_manager.zip"
