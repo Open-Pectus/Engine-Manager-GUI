@@ -8,6 +8,8 @@ jobs:
   build:
     name: Build .exe
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
