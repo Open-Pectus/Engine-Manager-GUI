@@ -39,3 +39,4 @@ jobs:
           body: "Download, unzip and run `Pectus Engine Manager.exe`."
           allowUpdates: true
           makeLatest: true
+          omitBodyDuringUpdate: true
