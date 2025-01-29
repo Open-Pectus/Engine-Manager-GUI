@@ -21,8 +21,8 @@ from typing import Callable, Dict, List, Union
 
 from filelock import FileLock
 import httpx
-from pyshortcuts import make_shortcut
 import pystray
+import multiprocess
 
 __version__ = "0.1.0"
 # This application is written for Windows
@@ -1071,14 +1071,6 @@ class OpenPectusEngineManagerGui(tk.Tk):
 
 
 def main():
-    # Create shortcut on Desktop
-    icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
-    make_shortcut(
-        f'"{sys.executable}" -m openpectus_engine_manager.__init__',
-        name="Open Pectus Engine Manager",
-        icon=icon_path,
-        terminal=False,
-        noexe=True)
     # Instantiate objects
     persistent_data = PersistentData()
     gui = OpenPectusEngineManagerGui(persistent_data)
@@ -1112,4 +1104,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocess.freeze_support()
     main()
