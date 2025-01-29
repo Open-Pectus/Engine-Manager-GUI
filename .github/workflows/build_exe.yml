@@ -3,6 +3,8 @@ name: Build .exe
 on:
   push:
     branches: [ "main" ]
+  repository_dispatch:
+    types: [dispatch-event]
 
 jobs:
   build:
