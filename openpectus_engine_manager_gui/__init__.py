@@ -31,11 +31,13 @@ assert platform.system() == "Windows"
 import_lock = threading.Lock()
 # Initialize log directory
 log_directory = os.path.join(
-    os.path.dirname(__file__),
+    os.path.expanduser("~"),
+    "AppData",
+    "Local",
+    "OpenPectusEngineManagerGui",
     "logs",
 )
-if not os.path.exists(log_directory):
-    os.makedirs(log_directory)
+os.makedirs(log_directory, exist_ok=True)
 # Set up SSL context to use Windows certificate store
 ssl_context = ssl.create_default_context()
 ssl_context.load_default_certs()
@@ -58,6 +60,7 @@ class JsonData:
     data: dict
 
     def __init__(self):
+        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
         self._lock = FileLock(self.filename+".lock")
         self.read()
         self.write({})
@@ -92,7 +95,13 @@ class JsonData:
 
 
 class PersistentData(JsonData):
-    filename = os.path.join(os.path.dirname(__file__), "config.json")
+    filename = os.path.join(
+        os.path.expanduser("~"),
+        "AppData",
+        "Local",
+        "OpenPectusEngineManagerGui",
+        "config.json"
+    )
     data = {
         "aggregator_hostname": "openpectus.com",
         "aggregator_port": 443,
