@@ -27,18 +27,17 @@ jobs:
       - name: Zip application
         run: |
           cd dist
-          cd "Pectus Engine Manager"
-          tar.exe -a -c -f ../../engine_manager.zip "_internal" "Pectus Engine Manager.exe"
-      - name: Archive application zip file
+          move "Open Pectus Engine Manager.exe" ../
+      - name: Archive application
         uses: actions/upload-artifact@v4
         with:
           name: engine_manager
-          path: "engine_manager.zip"
+          path: "Open Pectus Engine Manager.exe"
       - uses: ncipollo/release-action@v1
         with:
-          artifacts: "engine_manager.zip"
+          artifacts: "Open Pectus Engine Manager.exe"
           tag: release
-          body: "Download, unzip and run `Pectus Engine Manager.exe`."
+          body: "Download and run `Open Pectus Engine Manager.exe`."
           allowUpdates: true
           makeLatest: true
           omitBodyDuringUpdate: true
