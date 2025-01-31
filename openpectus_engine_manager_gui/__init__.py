@@ -1,15 +1,15 @@
 """Run multiple [Open Pectus](https://github.com/Open-Pectus/Open-Pectus/)
 engines in a convenient user interface."""
+import sys
+INITIAL_MODULES = sys.modules.keys()
 import asyncio
 from collections import defaultdict
 import ctypes
 import json
 import logging
-from logging.handlers import RotatingFileHandler
 import os
 import platform
 import ssl
-import sys
 import threading
 import time
 import tkinter as tk
@@ -24,6 +24,7 @@ from filelock import FileLock
 import httpx
 import pystray
 import multiprocess
+import multiprocess.spawn
 
 __version__ = "0.1.0"
 # This application is written for Windows
@@ -119,14 +120,14 @@ class LogRecorder(logging.Handler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.logs: Dict[str, List[logging.LogRecord]] = defaultdict(list)
-        self.emit_callback: List[Callable] = []
+        self.emit_callbacks: List[Callable] = []
         self.engine_names: List[str] = []
 
     def emit(self, record: logging.LogRecord):
         assert record.threadName is not None
         if record.threadName in self.engine_names:
             self.logs[record.threadName].append(record)
-            for fn in self.emit_callback:
+            for fn in self.emit_callbacks:
                 fn(record, record.threadName)
 
     def clear_log(self, thread_name):
@@ -172,7 +173,7 @@ class EngineManager:
             # so don't let threads manipulate it at the same time.
             import_lock.acquire()
             for k in list(sys.modules.keys()):
-                if "openpectus" in k:
+                if k not in INITIAL_MODULES:
                     del sys.modules[k]
             from openpectus.engine.main import create_uod
             from openpectus.engine.engine import Engine
@@ -185,6 +186,9 @@ class EngineManager:
             from openpectus.engine.engine_runner import EngineRunner
             from openpectus.protocol.engine_dispatcher import EngineDispatcher
             from openpectus.lang.exec.tags import SystemTagName
+            import logging
+            import os
+            from logging.handlers import RotatingFileHandler
             import_lock.release()
             # Attach log recorder to Open Pectus loggers created on import
             # to catch them and show them in EngineOutput
@@ -297,6 +301,7 @@ class EngineManager:
                 cancel(),
                 self.loops[engine_name]
             )
+            self.loops[engine_name].stop()
 
     def validate_engine(self, engine_item: Dict[str, str]):
         engine_name = engine_item["engine_name"]
@@ -306,9 +311,12 @@ class EngineManager:
             # Remove cached modules to avoid cross-contamination
             import_lock.acquire()
             for k in list(sys.modules.keys()).copy():
-                if "openpectus" in k:
+                if k not in INITIAL_MODULES:
                     del sys.modules[k]
             from openpectus.engine.main import validate_and_exit
+            import logging
+            import os
+            from logging.handlers import RotatingFileHandler
             import_lock.release()
             # Attach log recorder to Open Pectus logs to catch them
             # and show them in EngineOutput
@@ -1098,7 +1106,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
         )
 
 
-def main():
+def assemble_gui() -> OpenPectusEngineManagerGui:
     # Instantiate objects
     persistent_data = PersistentData()
     gui = OpenPectusEngineManagerGui(persistent_data)
@@ -1116,8 +1124,8 @@ def main():
     gui.engine_list.on_validate_callback.append(engine_manager.validate_engine)
     gui.add_engine_callback.append(lambda x: log_recorder.engine_names.append(x))
     gui.remove_engine_callback.append(lambda x: log_recorder.engine_names.remove(x))
-    log_recorder.emit_callback.append(gui.engine_list.set_tag_for_engine_name)
-    log_recorder.emit_callback.append(
+    log_recorder.emit_callbacks.append(gui.engine_list.set_tag_for_engine_name)
+    log_recorder.emit_callbacks.append(
         gui.engine_output.insert_log_record_for_engine
     )
     # Override methods
@@ -1127,10 +1135,15 @@ def main():
     # Populate GUI with persistent data
     for uod_filename in persistent_data["uods"]:
         gui.load_uod_file(uod_filename)
+    return gui
+
+
+def main():
+    gui = assemble_gui()
     # Start Tk event loop
     gui.mainloop()
 
 
 if __name__ == "__main__":
-    multiprocess.freeze_support()
+    multiprocess.spawn.freeze_support()
     main()

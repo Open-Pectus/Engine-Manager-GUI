@@ -19,9 +19,13 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: python -m pip install --upgrade pip pyinstaller
+        run: python -m pip install --upgrade pip pyinstaller pyright
       - name: Install Open Pectus Engine Manager
         run: pip install -e .
+      - name: Type check with pyright
+        run: pyright
+      - name: Test with unittest
+        run: python -m unittest
       - name: Build .exe
         run: pyinstaller pyinstaller.spec
       - name: Zip application
