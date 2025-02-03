@@ -77,10 +77,10 @@ class TestEngineManager(unittest.TestCase):
         # Stop engine
         em.stop_engine(engine_item)
         t0 = time.time()
-        while loop.is_running() or thread.is_alive():
+        while thread.is_alive():
             if time.time() - t0 >= 10:
                 raise Exception("Engine manager was unable to stop engine.")
-            time.sleep(1)
+            time.sleep(0.01)
 
     def test_validate_engine(self):
         # Test using demo UOD shipped with Open Pectus

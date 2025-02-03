@@ -154,6 +154,7 @@ class EngineManager:
         self.engines = dict()
         self.threads = dict()
         self.loops = dict()
+        self._tasks = set()
 
     def set_status_for_item(self, status, item):
         raise NotImplementedError
@@ -163,7 +164,7 @@ class EngineManager:
         engine_name = engine_item["engine_name"]
         uod_filename = engine_item["filename"]
 
-        async def start_engine(loop: asyncio.EventLoop):
+        async def run_engine(loop: asyncio.EventLoop):
             """Condensed version of main_async from openpectus.engine.main"""
             # Imported modules are cached in sys.modules. This causes issues
             # because variables defined in a module are shared across all
@@ -261,26 +262,28 @@ class EngineManager:
             async def on_steady_state():
                 assert engine is not None
                 engine.run()
+
             runner.first_steady_state_callback = on_steady_state
             self.engines[engine_name] = (engine, runner)
             await runner.run()
             file_handler.close()
 
         self.loops[engine_name] = asyncio.new_event_loop()
+
+        def run_engine_task():
+            async def async_task(loop):
+                await run_engine(loop)
+                self.set_status_for_item("Not running", engine_item)
+                self.loops[engine_name].stop()
+                log.info(f"Finished running {engine_name}")
+
+            self.loops[engine_name].run_until_complete(async_task(self.loops[engine_name]))
+            self.loops[engine_name].close()
+
         self.threads[engine_name] = threading.Thread(
             name=engine_name,
-            target=self.loops[engine_name].run_forever,
+            target=run_engine_task,
             daemon=True,
-        )
-
-        async def _start_engine(loop):
-            await start_engine(loop)
-            self.set_status_for_item("Not running", engine_item)
-            self.loops[engine_name].stop()
-
-        asyncio.run_coroutine_threadsafe(
-            _start_engine(self.loops[engine_name]),
-            self.loops[engine_name]
         )
         self.threads[engine_name].start()
 
@@ -290,18 +293,20 @@ class EngineManager:
 
         async def cancel():
             """Mimics close_async in openpectus.engine.main"""
+            log.info(f"Stopping {engine_name}")
             if engine_name in self.engines:
                 engine, runner = self.engines[engine_name]
                 engine.stop()
                 await runner.shutdown()
-            log.info("Stopped", engine_item)
+            log.info(f"Stopped {engine_name}")
 
         if self.loops[engine_name].is_running():
-            asyncio.run_coroutine_threadsafe(
+            task = asyncio.run_coroutine_threadsafe(
                 cancel(),
                 self.loops[engine_name]
             )
-            self.loops[engine_name].stop()
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     def validate_engine(self, engine_item: Dict[str, str]):
         engine_name = engine_item["engine_name"]
