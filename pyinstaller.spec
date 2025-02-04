@@ -1,12 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('openpectus_engine_manager_gui/icon.ico', './'), ('openpectus_engine_manager_gui/icon.png', './')]
-binaries = []
-hiddenimports = []
-tmp_ret = collect_all('openpectus')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
+datas, binaries, hiddenimports = collect_all('openpectus')
+datas += [
+    ('openpectus_engine_manager_gui/icon.ico', './'),
+    ('openpectus_engine_manager_gui/icon.png', './'),
+]
 
 a = Analysis(
     ['openpectus_engine_manager_gui/__init__.py'],
