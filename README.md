@@ -6,9 +6,9 @@ Run multiple [Open Pectus](https://github.com/Open-Pectus/Open-Pectus/) engines 
 | *Figure 1. Screenshot of Open Pectus Engine Manager GUI.* |
 
 ## Getting Started
-[Download Latest Release](https://github.com/Open-Pectus/Engine-Manager-GUI/releases/download/release/engine_manager.zip), unzip and run `Pectus Engine Manager.exe`.
+[Download latest release](https://github.com/Open-Pectus/Engine-Manager-GUI/releases/download/release/Open.Pectus.Engine.Manager.exe) and run `Pectus Engine Manager.exe`.
 
-Documentation is available at [Read the Docs](https://docs.openpectus.org/latest/).
+Documentation is available at [docs.openpectus.org](https://docs.openpectus.org/latest/).
 
 #### Configure Aggregator
 Click `File` and select `Aggregator Settings` to bring up a dialog where you can enter the aggregator hostname, port and select if it uses SSL. Click `Verify and Save` to save changes.
