@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 datas, binaries, hiddenimports = collect_all('openpectus')
 datas += collect_data_files("pint", includes=["default_en.txt", "constants_en.txt"])
