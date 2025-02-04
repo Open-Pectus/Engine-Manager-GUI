@@ -1,4 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+
+# Apply patch
+from openpectus.lang.exec import units
+before = """cache_folder = os.path.join(os.path.dirname(__file__), "pint-cache")
+ureg = UnitRegistry(cache_folder=cache_folder)"""
+after = "ureg = UnitRegistry()"
+with open(units.__file__, "r") as f:
+    original_contents = f.read()
+with open(units.__file__, "w") as f:
+    f.write(original_contents.replace(before, after))
+    
 from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = collect_all('openpectus')
@@ -43,3 +54,7 @@ exe = EXE(
     entitlements_file=None,
     icon=['openpectus_engine_manager_gui/icon.ico'],
 )
+
+# Undo patch
+with open(units.__file__, "w") as f:
+    f.write(original_contents)
