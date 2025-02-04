@@ -1,10 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 # Apply patch
+import os
+
 from openpectus.lang.exec import units
-before = """cache_folder = os.path.join(os.path.dirname(__file__), "pint-cache")
-ureg = UnitRegistry(cache_folder=cache_folder)"""
-after = "ureg = UnitRegistry()"
+before = 'cache_folder = os.path.join(os.path.dirname(__file__), "pint-cache")'
+after = '''app_data_directory = os.path.join(
+    os.path.expanduser("~"),
+    "AppData",
+    "Local",
+    "OpenPectusEngineManagerGui",
+)
+'''+f'cache_folder = os.path.join(app_data_directory, "pint-cache")'
 with open(units.__file__, "r") as f:
     original_contents = f.read()
 with open(units.__file__, "w") as f:
