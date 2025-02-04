@@ -26,8 +26,6 @@ import httpx
 import pystray
 import multiprocess
 import multiprocess.spawn
-from openpectus.engine.engine import Engine
-from openpectus.engine.engine_runner import EngineRunner
 
 __version__ = "0.1.0"
 # This application is written for Windows
@@ -154,7 +152,7 @@ class EngineManager:
         self.log_handler = log_handler
         self.persistent_data = persistent_data
         # Internal state
-        self.engines: dict[str, tuple[Engine, EngineRunner]] = dict()
+        self.engines = dict()
         self.threads: dict[str, threading.Thread] = dict()
         self.loops: dict[str, asyncio.AbstractEventLoop] = dict()
         self._tasks: set[Future] = set()
