@@ -17,14 +17,17 @@ from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import ttk
 import tkinter.font
-from typing import Callable, Dict, List, Union
+from typing import Callable
 import webbrowser
+from concurrent.futures import Future
 
 from filelock import FileLock
 import httpx
 import pystray
 import multiprocess
 import multiprocess.spawn
+from openpectus.engine.engine import Engine
+from openpectus.engine.engine_runner import EngineRunner
 
 __version__ = "0.1.0"
 # This application is written for Windows
@@ -75,7 +78,7 @@ class JsonData:
             except (json.JSONDecodeError, IOError):
                 pass
 
-    def write(self, payload: Dict[str, str | int | float | bool]):
+    def write(self, payload: dict[str, str | int | float | bool]):
         with self._lock:
             self.read()
             for k, v in payload.items():
@@ -119,9 +122,9 @@ class LogRecorder(logging.Handler):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.logs: Dict[str, List[logging.LogRecord]] = defaultdict(list)
-        self.emit_callbacks: List[Callable] = []
-        self.engine_names: List[str] = []
+        self.logs: dict[str, list[logging.LogRecord]] = defaultdict(list)
+        self.emit_callbacks: list[Callable] = []
+        self.engine_names: list[str] = []
 
     def emit(self, record: logging.LogRecord):
         assert record.threadName is not None
@@ -151,15 +154,16 @@ class EngineManager:
         self.log_handler = log_handler
         self.persistent_data = persistent_data
         # Internal state
-        self.engines = dict()
-        self.threads = dict()
-        self.loops = dict()
-        self._tasks = set()
+        self.engines: dict[str, tuple[Engine, EngineRunner]] = dict()
+        self.threads: dict[str, threading.Thread] = dict()
+        self.loops: dict[str, asyncio.AbstractEventLoop] = dict()
+        self._tasks: set[Future] = set()
+        self.running_engines_names: set[str] = set()
 
     def set_status_for_item(self, status, item):
         raise NotImplementedError
 
-    def start_engine(self, engine_item: Dict[str, str]):
+    def start_engine(self, engine_item: dict[str, str]):
         log.info(f"Starting engine in engine manager {engine_item}")
         engine_name = engine_item["engine_name"]
         uod_filename = engine_item["filename"]
@@ -286,8 +290,9 @@ class EngineManager:
             daemon=True,
         )
         self.threads[engine_name].start()
+        self.running_engines_names.add(engine_name)
 
-    def stop_engine(self, engine_item: Dict[str, str]):
+    def stop_engine(self, engine_item: dict[str, str]):
         assert engine_item["engine_name"] in self.loops
         engine_name = engine_item["engine_name"]
 
@@ -307,8 +312,9 @@ class EngineManager:
             )
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
+            task.add_done_callback(lambda _: self.running_engines_names.discard(engine_name))
 
-    def validate_engine(self, engine_item: Dict[str, str]):
+    def validate_engine(self, engine_item: dict[str, str]):
         engine_name = engine_item["engine_name"]
         uod_filename = engine_item["filename"]
 
@@ -357,15 +363,20 @@ class EngineManager:
         )
         self.threads[engine_name].start()
 
-    def get_running_engines(self) -> List[str]:
+    def get_running_engines(self) -> list[str]:
         running_engines = []
         for engine_name, loop in self.loops.items():
             if loop.is_running():
                 running_engines.append(engine_name)
         return running_engines
 
+    def stop_all_running_engines(self):
+        for engine_name in self.running_engines_names:
+            engine_item = dict(engine_name=engine_name)
+            self.stop_engine(engine_item)
 
-class VerticalScrolledText(ttk.Frame):
+
+class VerticalScrolledZoomableLockedText(ttk.Frame):
     """
     Scrollable, zoomable frame for text widgets.
 
@@ -404,9 +415,9 @@ class VerticalScrolledText(ttk.Frame):
     def _proxy(self, *args):
         """Step in between modifications to the contained text to
         enforce no-edit."""
-        if args[0] == "delete" and args[1:] != ("1.0", "end",):
+        if args[0] == "delete" and args[1:] != ("1.0", tk.END,):
             return
-        elif args[0] == "insert" and args[1] != "end":
+        elif args[0] == "insert" and args[1] != tk.END:
             return
         cmd = (self._orig,) + args
         result = self.tk.call(cmd)
@@ -460,7 +471,7 @@ class SingletonWindow:
         if self.exists:
             self.window.deiconify()  # Bring the window into view.
             return False
-        self.window = tk.Toplevel(self.parent)
+        self.window: tk.Toplevel = tk.Toplevel(self.parent)
         self.window.protocol("WM_DELETE_WINDOW", self.exit)
         self.exists = True
         return True
@@ -593,10 +604,11 @@ class EngineListPanel(ttk.LabelFrame):
         self.treeview = treeview
 
         # Callback endpoints
-        self.select_item_callback: List[Callable] = []
-        self.on_start_callback: List[Callable] = []
-        self.on_stop_callback: List[Callable] = []
-        self.on_validate_callback: List[Callable] = []
+        self.select_item_callback: list[Callable] = []
+        self.on_start_callback: list[Callable] = []
+        self.on_stop_callback: list[Callable] = []
+        self.on_restart_callback: list[Callable] = []
+        self.on_validate_callback: list[Callable] = []
 
     def remove_uod(self, uod_filename: str):
         raise NotImplementedError
@@ -618,7 +630,7 @@ class EngineListPanel(ttk.LabelFrame):
         self.treeview.insert("", tk.END, text=filename, values=(status,))
         self.rebuild_engine_name_to_row_id()
 
-    def set_status_for_item(self, status: str, item: Dict[str, str]):
+    def set_status_for_item(self, status: str, item: dict[str, str]):
         self.treeview.item(
             self.engine_name_to_row_id[item["engine_name"]],
             values=(status,)
@@ -646,7 +658,7 @@ class EngineListPanel(ttk.LabelFrame):
         )
         self.engine_name_to_tag[engine_name] = tag
 
-    def get_all_items(self) -> List[Dict[str, str]]:
+    def get_all_items(self) -> list[dict[str, str]]:
         items = []
         for row_id in self.treeview.get_children():
             items.append(self._get_item_by_id(row_id))
@@ -691,7 +703,7 @@ class EngineListPanel(ttk.LabelFrame):
     def load_engine(self):
         raise NotImplementedError
 
-    def _get_item_by_id(self, row_id: str) -> Dict[str, str]:
+    def _get_item_by_id(self, row_id: str) -> dict[str, str]:
         treeview_item = self.treeview.item(row_id)
         return dict(
             filename=treeview_item["text"],
@@ -701,7 +713,7 @@ class EngineListPanel(ttk.LabelFrame):
                 )[0],
         )
 
-    def _on_select_item(self, event: tk.Event) -> Union[None, Dict[str, str]]:
+    def _on_select_item(self, event: tk.Event):
         """Callback attached to up/down key and left/right click."""
         # Check if source of event is keyboard
         if event.keycode == "??":
@@ -723,7 +735,6 @@ class EngineListPanel(ttk.LabelFrame):
         self.engine_name_to_tag[item["engine_name"]] = "INFO"
         for fn in self.select_item_callback:
             fn(item)
-        return item
 
     def _on_delete(self, event: tk.Event):
         for tree_view_item_id in self.treeview.selection():
@@ -733,11 +744,12 @@ class EngineListPanel(ttk.LabelFrame):
                 self.remove_uod(item["filename"])
         self.rebuild_engine_name_to_row_id()
 
-    def _populate_right_click_menu(self, items: List[Dict[str, str]]) -> Dict[str, Callable]:
+    def _populate_right_click_menu(self, items: list[dict[str, str]]) -> dict[str, Callable]:
         """Creates menu items in right click menu."""
         if len(items) > 1:
             if all([item["status"] == "Running" for item in items]):
                 return {
+                    "Restart engines": lambda: self._right_click_menu_restart_engine(items),
                     "Stop engines": lambda: self._right_click_menu_stop_engine(items),
                 }
             elif all([item["status"] == "Not running" for item in items]):
@@ -750,6 +762,7 @@ class EngineListPanel(ttk.LabelFrame):
             item = items[0]
             if item["status"] == "Running":
                 return {
+                    f"Restart {item['engine_name']}": lambda: self._right_click_menu_restart_engine(items),
                     f"Stop {item['engine_name']}": lambda: self._right_click_menu_stop_engine(items),
                 }
             elif item["status"] == "Not running":
@@ -805,6 +818,19 @@ class EngineListPanel(ttk.LabelFrame):
             for fn in self.on_stop_callback:
                 fn(item)
 
+    def _right_click_menu_restart_engine(self, items):
+        self._right_click_menu_stop_engine(items)
+        self.master.after(100, self._attempt_restart, items)
+
+    def _attempt_restart(self, selected_items):
+        selected_filenames = [item["filename"] for item in selected_items]
+        selected_items_updated = [item for item in self.get_all_items() if item["filename"] in selected_filenames]
+
+        if all(item["status"] == "Not running" for item in selected_items_updated):
+            self._right_click_menu_start_engine(selected_items_updated)
+        else:
+            self.master.after(100, self._attempt_restart, selected_items_updated)
+
 
 class EngineOutput(tk.LabelFrame):
     """Text area with coloring of log statements
@@ -823,10 +849,10 @@ class EngineOutput(tk.LabelFrame):
         # Internal state
         self.engine_name = None
         self.text = dict()
-        self.text_area = dict()
+        self.text_areas: dict[str | None, VerticalScrolledZoomableLockedText] = dict()
 
         self.create_text_area(self.engine_name)
-        self.text_area[self.engine_name].grid(
+        self.text_areas[self.engine_name].grid(
             row=0,
             column=0,
             sticky=tk.N+tk.S+tk.E+tk.W
@@ -839,9 +865,9 @@ class EngineOutput(tk.LabelFrame):
 
     def create_text_area(self, engine_name: None | str):
         if engine_name in self.text:
-            assert engine_name in self.text_area
+            assert engine_name in self.text_areas
             return
-        text_area = VerticalScrolledText(
+        text_area = VerticalScrolledZoomableLockedText(
             self,
             tk.Text,
             height=30,
@@ -858,12 +884,12 @@ class EngineOutput(tk.LabelFrame):
         text_area.text.tag_config("CRITICAL", foreground="red", underline=1)
 
         self.text[engine_name] = text_area.text
-        self.text_area[engine_name] = text_area
+        self.text_areas[engine_name] = text_area
 
-    def clear_text(self, item: Dict[str, str]):
+    def clear_text(self, item: dict[str, str]):
         self.text[item["engine_name"]].delete("1.0", tk.END)
 
-    def set_engine(self, engine_item: None | Dict[str, str]):
+    def set_engine(self, engine_item: None | dict[str, str]):
         if engine_item is None:
             self.engine_name = None
             self.configure(text="Engine Output")
@@ -871,7 +897,7 @@ class EngineOutput(tk.LabelFrame):
             if engine_item["engine_name"] == self.engine_name:
                 return
             # Hide current text area
-            for text_area in self.text_area.values():
+            for text_area in self.text_areas.values():
                 text_area.grid_remove()
             # Set label
             self.engine_name = engine_item["engine_name"]
@@ -879,7 +905,7 @@ class EngineOutput(tk.LabelFrame):
         # Create text area if it doesn't exist
         self.create_text_area(self.engine_name)
         # Show the "new" text area
-        self.text_area[self.engine_name].grid(
+        self.text_areas[self.engine_name].grid(
             row=0,
             column=0,
             sticky=tk.N+tk.S+tk.E+tk.W
@@ -927,7 +953,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
 
         # Create system tray icon
         self.protocol("WM_DELETE_WINDOW", self._close_window)
-        menu = (
+        tray_menu = (
             pystray.MenuItem("Show", self._show_from_tray, default=True),
             pystray.MenuItem("Exit", self._exit),
         )
@@ -936,7 +962,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
             "name",
             Image.open(icon_path),
             "Open Pectus Engine Manager",
-            menu
+            tray_menu,
         )
         self.icon.run_detached()
 
@@ -999,8 +1025,8 @@ class OpenPectusEngineManagerGui(tk.Tk):
         paned_window_right.add(engine_output, stretch="always")
 
         # Callback endpoints
-        self.add_engine_callback: List[Callable] = []
-        self.remove_engine_callback: List[Callable] = []
+        self.add_engine_callback: list[Callable] = []
+        self.remove_engine_callback: list[Callable] = []
 
         # Bind callbacks
         engine_list.select_item_callback.append(engine_output.set_engine)
@@ -1016,7 +1042,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
         self.deiconify()
 
         # Internal state
-        self._notification_message_time = 0
+        self._notification_message_time: float = 0.0
         self.engine_list = engine_list
         self.engine_output = engine_output
 
@@ -1026,6 +1052,9 @@ class OpenPectusEngineManagerGui(tk.Tk):
     def ask_before_exit(self) -> bool:
         """Override this method."""
         return False
+
+    def stop_all_running_engines(self):
+        """Override this method."""
 
     def load_uod_file(self, uod_filename: str) -> bool:
         log.info(f"Loading engine UOD {uod_filename}.")
@@ -1056,6 +1085,13 @@ class OpenPectusEngineManagerGui(tk.Tk):
         self.icon.remove_notification()
         self.after(0, self.deiconify)
 
+    def _exit_when_all_stopped(self):
+        if self.ask_before_exit():
+            self.after(10, self._exit_when_all_stopped)
+        else:
+            self.icon.stop()
+            self.after(0, self.destroy)
+
     def _exit(self, *args):
         if self.ask_before_exit():
             answer = messagebox.askquestion(
@@ -1064,6 +1100,10 @@ class OpenPectusEngineManagerGui(tk.Tk):
             )
             if answer == "no":
                 return
+        # Do this if it's important to stop engines before closing the Python process
+        #  self.stop_all_running_engines()
+        #  self._exit_when_all_stopped()
+        # Do this if it's OK to just quit
         self.icon.stop()
         self.after(0, self.destroy)
 
@@ -1082,7 +1122,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
         webbrowser.open(url)
 
     def _close_window(self):
-        if False and self.ask_before_exit():
+        if self.ask_before_exit():
             self.withdraw()
             # Avoid showing the notification many times in a short timespan
             if (time.time()-self._notification_message_time) > 300:
@@ -1136,6 +1176,7 @@ def assemble_gui() -> OpenPectusEngineManagerGui:
     # Override methods
     engine_manager.set_status_for_item = gui.engine_list.set_status_for_item
     gui.ask_before_exit = lambda: len(engine_manager.get_running_engines()) > 0
+    gui.stop_all_running_engines = engine_manager.stop_all_running_engines
     gui.engine_list.load_engine = gui._load_engines
     # Populate GUI with persistent data
     for uod_filename in persistent_data["uods"]:
