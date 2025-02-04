@@ -42,6 +42,7 @@ development = [
     "pyright",
     "black",
     "build",
+    "pyinstaller",
 ]
 
 [project.urls]
