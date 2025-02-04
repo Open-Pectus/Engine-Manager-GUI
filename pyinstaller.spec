@@ -2,6 +2,7 @@
 from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = collect_all('openpectus')
+datas += collect_data_files("pint", includes=["default_en.txt", "constants_en.txt"])
 datas += [
     ('openpectus_engine_manager_gui/icon.ico', './'),
     ('openpectus_engine_manager_gui/icon.png', './'),
