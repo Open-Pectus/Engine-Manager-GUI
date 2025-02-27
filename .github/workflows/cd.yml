@@ -28,7 +28,7 @@ jobs:
         uses: digicert/ssm-code-signing@v1.0.0
       - name: Set up certificate 
         run: |
-          echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12 
+          echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > D:\\Certificate_pkcs12.p12 
         shell: bash  
       - name: Set variables
         run: |
