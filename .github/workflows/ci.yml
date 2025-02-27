@@ -31,13 +31,13 @@ jobs:
           pyinstaller pyinstaller.spec
           cd dist
           move "Open Pectus Engine Manager.exe" ../
-      - uses: ncipollo/release-action@v1
-        with:
-          artifacts: "Open Pectus Engine Manager.exe"
-          tag: release
-          body: "Download and run `Open Pectus Engine Manager.exe`."
-          allowUpdates: true
-          makeLatest: true
-          omitBodyDuringUpdate: true
-          removeArtifacts: true
-          replacesArtifacts: true
+#      - uses: ncipollo/release-action@v1
+#        with:
+#          artifacts: "Open Pectus Engine Manager.exe"
+#          tag: release
+#          body: "Download and run `Open Pectus Engine Manager.exe`."
+#          allowUpdates: true
+#          makeLatest: true
+#          omitBodyDuringUpdate: true
+#          removeArtifacts: true
+#          replacesArtifacts: true
