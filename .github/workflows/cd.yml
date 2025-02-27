@@ -25,16 +25,13 @@ jobs:
           cd dist
           move "Open Pectus Engine Manager.exe" ../
       - name: Install DigiCert Client tools from Github Custom Actions marketplace
-        id: Digicert Code Signing Snippet
         uses: digicert/ssm-code-signing@v1.0.0
       - name: Set up certificate 
-        run: | 
+        run: |
           echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12 
         shell: bash  
-      - name: Set variables 
-        id: variables 
-        run: | 
-          echo "::set-output name=version::${GITHUB_REF#refs/tags/v}" 
+      - name: Set variables
+        run: |
           echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV" 
           echo "SM_API_KEY=${{ secrets.SM_API_KEY }}" >> "$GITHUB_ENV" 
           echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12" >> "$GITHUB_ENV" 
