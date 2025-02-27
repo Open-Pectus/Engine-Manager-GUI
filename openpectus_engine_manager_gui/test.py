@@ -60,10 +60,14 @@ class TestEngineManager(unittest.TestCase):
         em.start_engine(engine_item)
         t0 = time.time()
         assert isinstance(em.log_handler, BufferingHandler)
-        while True:
+        engine_started = False
+        while not engine_started:
             buffer = em.log_handler.buffer
-            if len(buffer) and buffer[-1].msg == "Started steady-state sending loop":
-                break
+            if len(buffer):
+                for item in buffer:
+                    if item.msg == "Started steady-state sending loop":
+                        engine_started = True
+                        break
             if time.time() - t0 >= 10:
                 raise Exception("Engine manager was unable to start engine.")
             time.sleep(1)
