@@ -110,6 +110,7 @@ class PersistentData(JsonData):
         "aggregator_hostname": "openpectus.com",
         "aggregator_port": 443,
         "aggregator_secure": True,
+        "aggregator_secret": "",
         "uods": []
     }
 
@@ -227,7 +228,7 @@ class EngineManager:
                 log.error(f"Failed to create uod: {ex}")
                 return
             engine = Engine(uod, enable_archiver=True)
-            dispatcher = EngineDispatcher(f"{self.persistent_data['aggregator_hostname']}:{self.persistent_data['aggregator_port']}", self.persistent_data['aggregator_secure'], uod.options)
+            dispatcher = EngineDispatcher(f"{self.persistent_data['aggregator_hostname']}:{self.persistent_data['aggregator_port']}", self.persistent_data['aggregator_secure'], uod.options, self.persistent_data["aggregator_secret"])
             if len(uod.required_roles) > 0 and not dispatcher.is_aggregator_authentication_enabled():
                 log.warning('"with_required_roles" specified in ' +
                             f'"{uod_filename}" but aggregator does ' +
@@ -497,6 +498,7 @@ class SettingsWindow(SingletonWindow):
         label_ag_hostname = tk.Label(window, text="Aggregator Hostname")
         label_ag_port = tk.Label(window, text="Aggregator Port")
         label_ag_ssl = tk.Label(window, text="Aggregator SSL")
+        label_ag_secret = tk.Label(window, text="Aggregator Secret")
         entry_ag_hostname = tk.Entry(window)
         entry_ag_port = tk.Entry(window)
         checkbox_ag_ssl = tk.Checkbutton(
@@ -506,6 +508,7 @@ class SettingsWindow(SingletonWindow):
             onvalue=1,
             offvalue=0
         )
+        entry_ag_secret = tk.Entry(window)
         verify_and_save_button = tk.Button(
             window,
             text="Verify and Save"
@@ -516,6 +519,7 @@ class SettingsWindow(SingletonWindow):
             checkbox_ag_ssl.select()
         entry_ag_hostname.insert(0, self.persistent_data["aggregator_hostname"])
         entry_ag_port.insert(0, self.persistent_data["aggregator_port"])
+        entry_ag_secret.insert(0, self.persistent_data["aggregator_secret"])
 
         # Configure layout
         label_ag_hostname.grid(row=0, column=0, sticky=tk.W)
@@ -524,7 +528,9 @@ class SettingsWindow(SingletonWindow):
         entry_ag_port.grid(row=1, column=1)
         label_ag_ssl.grid(row=2, column=0, sticky=tk.W)
         checkbox_ag_ssl.grid(row=2, column=1)
-        verify_and_save_button.grid(row=3, column=0, columnspan=2)
+        label_ag_secret.grid(row=3, column=0, sticky=tk.W)
+        entry_ag_secret.grid(row=3, column=1)
+        verify_and_save_button.grid(row=4, column=0, columnspan=2)
 
         def reset_button():
             verify_and_save_button["bg"] = "SystemButtonFace"
@@ -552,6 +558,7 @@ class SettingsWindow(SingletonWindow):
                     aggregator_hostname=entry_ag_hostname.get(),
                     aggregator_port=entry_ag_port.get(),
                     aggregator_secure=ag_ssl_value.get() == 1,
+                    aggregator_secret=entry_ag_secret.get(),
                 ))
             except httpx.HTTPError:
                 # Blink button red
