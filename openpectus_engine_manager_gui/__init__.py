@@ -20,6 +20,7 @@ import tkinter.font
 from typing import Callable
 import webbrowser
 from concurrent.futures import Future
+import subprocess
 
 from filelock import FileLock
 import httpx
@@ -47,6 +48,24 @@ ssl_context = ssl.create_default_context()
 ssl_context.load_default_certs()
 
 log = logging.getLogger("openpectus.engine_manager_gui")
+
+
+# Specify details of local aggregator
+local_aggregator_data = {
+    "aggregator_hostname": "127.0.0.1",
+    "aggregator_port": "9800",
+    "aggregator_secret": "",
+    "aggregator_secure": False,
+    "local_aggregator": True,
+}
+# Local aggregator database
+local_aggregator_db_filepath = os.path.join(
+    os.path.expanduser("~"),
+    "AppData",
+    "Local",
+    "OpenPectusEngineManagerGui",
+    "local_aggregator_db.sqlite3",
+)
 
 
 class JsonData:
@@ -111,7 +130,8 @@ class PersistentData(JsonData):
         "aggregator_port": 443,
         "aggregator_secure": True,
         "aggregator_secret": "",
-        "uods": []
+        "uods": [],
+        "local_aggregator": False,
     }
 
 
@@ -221,6 +241,8 @@ class EngineManager:
                     if isinstance(loggerDict[name], logging.Logger):
                         logging.getLogger(name).addHandler(self.log_handler)
                         logging.getLogger(name).addHandler(file_handler)
+            # Figure out if we are using local aggregator
+            data_source = local_aggregator_data if self.persistent_data['local_aggregator'] else self.persistent_data
             # Actually start engine
             try:
                 uod = create_uod(uod_filename)
@@ -228,7 +250,7 @@ class EngineManager:
                 log.error(f"Failed to create uod: {ex}")
                 return
             engine = Engine(uod, enable_archiver=True)
-            dispatcher = EngineDispatcher(f"{self.persistent_data['aggregator_hostname']}:{self.persistent_data['aggregator_port']}", self.persistent_data['aggregator_secure'], uod.options, self.persistent_data["aggregator_secret"])
+            dispatcher = EngineDispatcher(f"{data_source['aggregator_hostname']}:{data_source['aggregator_port']}", data_source['aggregator_secure'], uod.options, data_source["aggregator_secret"])
             if len(uod.required_roles) > 0 and not dispatcher.is_aggregator_authentication_enabled():
                 log.warning('"with_required_roles" specified in ' +
                             f'"{uod_filename}" but aggregator does ' +
@@ -492,9 +514,13 @@ class SettingsWindow(SingletonWindow):
 
         window = self.window
         window.title("Aggregator Settings")
-        ag_ssl_value = tk.IntVar(value=1)
+        window.attributes('-topmost', True)
+        local_ag_value = tk.BooleanVar()
+        ag_ssl_value = tk.BooleanVar()
+        local_ag_value.set(self.persistent_data["local_aggregator"])
 
         # Create GUI elements
+        label_local_ag = tk.Label(window, text="Local aggregator")
         label_ag_hostname = tk.Label(window, text="Aggregator Hostname")
         label_ag_port = tk.Label(window, text="Aggregator Port")
         label_ag_ssl = tk.Label(window, text="Aggregator SSL")
@@ -503,34 +529,63 @@ class SettingsWindow(SingletonWindow):
         entry_ag_port = tk.Entry(window)
         checkbox_ag_ssl = tk.Checkbutton(
             window,
-            text="",
             variable=ag_ssl_value,
-            onvalue=1,
-            offvalue=0
         )
         entry_ag_secret = tk.Entry(window)
+
+        def populate_input_widget_values():
+            # List of input widgets
+            input_widgets = [
+                entry_ag_hostname,
+                entry_ag_port,
+                checkbox_ag_ssl,
+                entry_ag_secret,
+            ]
+            # Select local aggregator data or latest saved data
+            data_source = local_aggregator_data if local_ag_value.get() else self.persistent_data
+            # Temporarily enable all input fields to allow writing values to them
+            for input_widget in input_widgets:
+                input_widget.config(state="normal")
+            # Clear current values
+            entry_ag_hostname.delete(0, tk.END)
+            entry_ag_port.delete(0, tk.END)
+            entry_ag_secret.delete(0, tk.END)
+            # Set appropriate values
+            ag_ssl_value.set(data_source["aggregator_secure"])
+            entry_ag_hostname.insert(0, data_source["aggregator_hostname"])
+            entry_ag_port.insert(0, data_source["aggregator_port"])
+            entry_ag_secret.insert(0, data_source["aggregator_secret"])
+            # Figure out if they should be enabled or disabled
+            state = "disabled" if local_ag_value.get() else "normal"
+            for input_widget in input_widgets:
+                input_widget.config(state=state)
+
+        # Populate GUI elements with saved values
+        populate_input_widget_values()
+
+        checkbox_local_ag = tk.Checkbutton(
+            window,
+            variable=local_ag_value,
+            command=populate_input_widget_values,
+        )
         verify_and_save_button = tk.Button(
             window,
             text="Verify and Save"
         )
 
-        # Populate GUI elements with current values
-        if self.persistent_data["aggregator_secure"]:
-            checkbox_ag_ssl.select()
-        entry_ag_hostname.insert(0, self.persistent_data["aggregator_hostname"])
-        entry_ag_port.insert(0, self.persistent_data["aggregator_port"])
-        entry_ag_secret.insert(0, self.persistent_data["aggregator_secret"])
-
         # Configure layout
-        label_ag_hostname.grid(row=0, column=0, sticky=tk.W)
-        entry_ag_hostname.grid(row=0, column=1)
-        label_ag_port.grid(row=1, column=0, sticky=tk.W)
-        entry_ag_port.grid(row=1, column=1)
-        label_ag_ssl.grid(row=2, column=0, sticky=tk.W)
-        checkbox_ag_ssl.grid(row=2, column=1)
-        label_ag_secret.grid(row=3, column=0, sticky=tk.W)
-        entry_ag_secret.grid(row=3, column=1)
-        verify_and_save_button.grid(row=4, column=0, columnspan=2)
+        layout = [
+            [label_local_ag, checkbox_local_ag],
+            [label_ag_hostname, entry_ag_hostname],
+            [label_ag_port, entry_ag_port],
+            [label_ag_ssl, checkbox_ag_ssl],
+            [label_ag_secret, entry_ag_secret],
+        ]
+        row_number = 0
+        for row_number, (label, input_widget) in enumerate(layout):
+            label.grid(row=row_number, column=0, sticky=tk.W)
+            input_widget.grid(row=row_number, column=1)
+        verify_and_save_button.grid(row=row_number+1, column=0, columnspan=2)
 
         def reset_button():
             verify_and_save_button["bg"] = "SystemButtonFace"
@@ -544,7 +599,7 @@ class SettingsWindow(SingletonWindow):
                 entry_ag_hostname.get(),
                 ":",
                 entry_ag_port.get(),
-                "/health",
+                "/version",
             ])
             try:
                 httpx.get(
@@ -554,12 +609,19 @@ class SettingsWindow(SingletonWindow):
                     verify=ssl_context,
                 )
                 verify_and_save_button["bg"] = "#8fff9c"
-                self.persistent_data.write(dict(
-                    aggregator_hostname=entry_ag_hostname.get(),
-                    aggregator_port=entry_ag_port.get(),
-                    aggregator_secure=ag_ssl_value.get() == 1,
-                    aggregator_secret=entry_ag_secret.get(),
-                ))
+                self.parent.after(500, reset_button)
+                if local_ag_value.get():
+                    self.persistent_data.write(dict(
+                        local_aggregator=True
+                    ))
+                else:
+                    self.persistent_data.write(dict(
+                        aggregator_hostname=entry_ag_hostname.get(),
+                        aggregator_port=entry_ag_port.get(),
+                        aggregator_secure=ag_ssl_value.get(),
+                        aggregator_secret=entry_ag_secret.get(),
+                        local_aggregator=False,
+                    ))
             except httpx.HTTPError:
                 # Blink button red
                 verify_and_save_button["bg"] = "#ff8f8f"
@@ -767,16 +829,19 @@ class EngineListPanel(ttk.LabelFrame):
                 }
         elif len(items) == 1:
             item = items[0]
+            uod_directory = os.path.abspath(os.path.dirname(item["filename"]))
             if item["status"] == "Running":
                 return {
                     f"Restart {item['engine_name']}": lambda: self._right_click_menu_restart_engine(items),
                     f"Stop {item['engine_name']}": lambda: self._right_click_menu_stop_engine(items),
+                    "Open containing folder": lambda: os.system(f'explorer "{uod_directory}"'),
                 }
             elif item["status"] == "Not running":
                 return {
                     f"Start {item['engine_name']}": lambda: self._right_click_menu_start_engine(items),
                     f"Validate {item['engine_name']} UOD": lambda: self._right_click_menu_validate_engine(items),
                     f"Remove {item['engine_name']} from list": lambda: self._right_click_menu_remove_uod_from_list(items),
+                    "Open containing folder": lambda: os.system(f'explorer "{uod_directory}"'),
                 }
         elif len(items) == 0:
             return {
@@ -1034,6 +1099,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
         # Callback endpoints
         self.add_engine_callback: list[Callable] = []
         self.remove_engine_callback: list[Callable] = []
+        self.exit_callback: list[Callable] = []
 
         # Bind callbacks
         engine_list.select_item_callback.append(engine_output.set_engine)
@@ -1041,6 +1107,7 @@ class OpenPectusEngineManagerGui(tk.Tk):
         engine_list.on_validate_callback.append(engine_output.clear_text)
         engine_list.remove_uod = self.remove_uod
         engine_list.save_as = engine_output.save_as
+        self.exit_callback.append(self.icon.stop)
 
         # Set minimum size
         self.minsize(width=400, height=200)
@@ -1096,7 +1163,8 @@ class OpenPectusEngineManagerGui(tk.Tk):
         if self.ask_before_exit():
             self.after(10, self._exit_when_all_stopped)
         else:
-            self.icon.stop()
+            for fn in self.exit_callback:
+                fn()
             self.after(0, self.destroy)
 
     def _exit(self, *args):
@@ -1111,21 +1179,24 @@ class OpenPectusEngineManagerGui(tk.Tk):
         #  self.stop_all_running_engines()
         #  self._exit_when_all_stopped()
         # Do this if it's OK to just quit
-        self.icon.stop()
+        for fn in self.exit_callback:
+            fn()
         self.after(0, self.destroy)
 
     def _open_aggregator(self):
-        url = self.persistent_data["aggregator_hostname"]
-        if self.persistent_data["aggregator_secure"]:
+        # Figure out if we are using local aggregator
+        data_source = local_aggregator_data if self.persistent_data['local_aggregator'] else self.persistent_data
+        url = data_source["aggregator_hostname"]
+        if data_source["aggregator_secure"]:
             url = "https://"+url
         else:
             url = "http://"+url
-        if self.persistent_data["aggregator_secure"] and self.persistent_data["aggregator_port"] == 443:
+        if data_source["aggregator_secure"] and data_source["aggregator_port"] == 443:
             pass
-        elif self.persistent_data["aggregator_port"] == 80:
+        elif not data_source["aggregator_secure"] and data_source["aggregator_port"] == 80:
             pass
         else:
-            url = url+':'+self.persistent_data["aggregator_port"]
+            url = url+':'+data_source["aggregator_port"]
         webbrowser.open(url)
 
     def _close_window(self):
@@ -1164,6 +1235,14 @@ def assemble_gui() -> OpenPectusEngineManagerGui:
     gui = OpenPectusEngineManagerGui(persistent_data)
     log_recorder = LogRecorder()
     engine_manager = EngineManager(log_handler=log_recorder, persistent_data=persistent_data)
+    # Start local aggregator process
+    aggregator_process = subprocess.Popen([
+        "pectus-aggregator",
+        "--host", str(local_aggregator_data["aggregator_hostname"]),
+        "--port", str(local_aggregator_data["aggregator_port"]),
+        "--secret", str(local_aggregator_data["aggregator_secret"]),
+        "--database", local_aggregator_db_filepath,
+    ])
     # Attach callbacks
     gui.engine_list.on_start_callback.append(
         lambda item: log_recorder.clear_log(item["engine_name"])
@@ -1174,12 +1253,13 @@ def assemble_gui() -> OpenPectusEngineManagerGui:
         lambda item: log_recorder.clear_log(item["engine_name"])
     )
     gui.engine_list.on_validate_callback.append(engine_manager.validate_engine)
-    gui.add_engine_callback.append(lambda x: log_recorder.engine_names.append(x))
-    gui.remove_engine_callback.append(lambda x: log_recorder.engine_names.remove(x))
+    gui.add_engine_callback.append(log_recorder.engine_names.append)
+    gui.remove_engine_callback.append(log_recorder.engine_names.remove)
     log_recorder.emit_callbacks.append(gui.engine_list.set_tag_for_engine_name)
     log_recorder.emit_callbacks.append(
         gui.engine_output.insert_log_record_for_engine
     )
+    gui.exit_callback.append(aggregator_process.kill)
     # Override methods
     engine_manager.set_status_for_item = gui.engine_list.set_status_for_item
     gui.ask_before_exit = lambda: len(engine_manager.get_running_engines()) > 0

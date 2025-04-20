@@ -8,7 +8,8 @@ import openpectus_engine_manager_gui
 from openpectus.engine.configuration import demo_uod
 
 gui = openpectus_engine_manager_gui.assemble_gui()
-gui.icon.stop()
+for fn in gui.exit_callback:
+    fn()
 
 
 class TestPersistentData(unittest.TestCase):
@@ -23,9 +24,10 @@ class TestPersistentData(unittest.TestCase):
             "aggregator_secure",
             "aggregator_secret",
             "uods",
+            "local_aggregator",
         ]
         for key in keys:
-            data[key] = data[key]
+            self.assertIn(key, data.dict())
 
 
 def engine_manager_factory(uods: List[str]) -> openpectus_engine_manager_gui.EngineManager:
@@ -39,6 +41,7 @@ def engine_manager_factory(uods: List[str]) -> openpectus_engine_manager_gui.Eng
             aggregator_port=443,
             aggregator_secure=True,
             aggregator_secret="",
+            local_aggregator=False,
             uods=[demo_uod.__file__],
         ),
     )

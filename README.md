@@ -11,7 +11,7 @@ Run multiple [Open Pectus](https://github.com/Open-Pectus/Open-Pectus/) engines 
 Documentation is available at [docs.openpectus.org](https://docs.openpectus.org/latest/).
 
 #### Configure Aggregator
-Click `File` and select `Aggregator Settings` to bring up a dialog where you can enter the aggregator hostname, port and select if it uses SSL. Click `Verify and Save` to save changes.
+Click `File` and select `Aggregator Settings` to bring up a dialog where you can enter the aggregator hostname, port and select if it uses SSL. It is also possible to use a local aggregator instance. Click `Verify and Save` to save changes.
 
 #### Open Aggregator
 Click `File` and select `Open Aggregator`.
@@ -28,6 +28,7 @@ Right click on entry in the `Engine List` and select `Validate .. UOD`. Validati
 This is only available when the engine status is `Not running`.
  
 Right click on entry in the `Engine List` and select `Start ..`. Engine output will be visible in the `Engine Output` pane. The engine status is `Running` while the engine is running. The engine can be stopped by right click and selecting `Stop ...`. When fullt stopped the status changes to `Not running`.
+
 #### Remove UOD
 This is only available when the engine status is `Not running`.
 
