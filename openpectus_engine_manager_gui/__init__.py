@@ -20,7 +20,6 @@ import tkinter.font
 from typing import Callable
 import webbrowser
 from concurrent.futures import Future
-import subprocess
 
 from filelock import FileLock
 import httpx
@@ -1229,20 +1228,40 @@ class OpenPectusEngineManagerGui(tk.Tk):
         )
 
 
+def aggregator_task():
+    # Adapted from main method in openpectus.aggregator.main
+    import openpectus.aggregator.main
+    import alembic.command
+    import alembic.config
+    from openpectus.aggregator.aggregator_server import AggregatorServer
+
+    # Initialize database
+    alembic_ini_file_path = os.path.join(os.path.dirname(openpectus.aggregator.main.__file__), "alembic.ini")
+    alembic_config = alembic.config.Config(alembic_ini_file_path)
+    alembic_config.set_main_option("sqlalchemy.url", f"sqlite:///{local_aggregator_db_filepath}")
+    alembic.command.upgrade(alembic_config, "head")
+
+    # Instantiate server
+    server = AggregatorServer("Open Pectus Aggregator",
+                              local_aggregator_data["aggregator_hostname"],
+                              local_aggregator_data["aggregator_port"],
+                              AggregatorServer.default_frontend_dist_dir,
+                              local_aggregator_db_filepath,
+                              local_aggregator_data["aggregator_secret"])
+
+    # Start aggregator server
+    server.start()
+
+
 def assemble_gui() -> OpenPectusEngineManagerGui:
     # Instantiate objects
     persistent_data = PersistentData()
     gui = OpenPectusEngineManagerGui(persistent_data)
     log_recorder = LogRecorder()
     engine_manager = EngineManager(log_handler=log_recorder, persistent_data=persistent_data)
-    # Start local aggregator process
-    aggregator_process = subprocess.Popen([
-        "pectus-aggregator",
-        "--host", str(local_aggregator_data["aggregator_hostname"]),
-        "--port", str(local_aggregator_data["aggregator_port"]),
-        "--secret", str(local_aggregator_data["aggregator_secret"]),
-        "--database", local_aggregator_db_filepath,
-    ])
+    # Start local aggregator
+    aggregator_thread = threading.Thread(target=aggregator_task, daemon=True)
+    aggregator_thread.start()
     # Attach callbacks
     gui.engine_list.on_start_callback.append(
         lambda item: log_recorder.clear_log(item["engine_name"])
@@ -1259,7 +1278,6 @@ def assemble_gui() -> OpenPectusEngineManagerGui:
     log_recorder.emit_callbacks.append(
         gui.engine_output.insert_log_record_for_engine
     )
-    gui.exit_callback.append(aggregator_process.kill)
     # Override methods
     engine_manager.set_status_for_item = gui.engine_list.set_status_for_item
     gui.ask_before_exit = lambda: len(engine_manager.get_running_engines()) > 0
@@ -1278,5 +1296,13 @@ def main():
 
 
 if __name__ == "__main__":
+    # Hack to hide cmd window
+    # Source: https://stackoverflow.com/questions/67610859/
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    process_array = (ctypes.c_uint8 * 1)()
+    num_processes = kernel32.GetConsoleProcessList(process_array, 1)
+    if num_processes < 3:
+        ctypes.WinDLL('user32').ShowWindow(kernel32.GetConsoleWindow(), 0)
+    # Run main
     multiprocess.spawn.freeze_support()
     main()
