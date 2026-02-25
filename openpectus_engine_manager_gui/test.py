@@ -23,6 +23,7 @@ class TestPersistentData(unittest.TestCase):
             "aggregator_port",
             "aggregator_secure",
             "aggregator_secret",
+            "ignore_version_error",
             "uods",
             "local_aggregator",
         ]
@@ -41,6 +42,7 @@ def engine_manager_factory(uods: List[str]) -> openpectus_engine_manager_gui.Eng
             aggregator_port=443,
             aggregator_secure=True,
             aggregator_secret="",
+            ignore_version_error=False,
             local_aggregator=False,
             uods=[demo_uod.__file__],
         ),

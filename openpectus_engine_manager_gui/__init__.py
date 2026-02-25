@@ -55,6 +55,7 @@ local_aggregator_data = {
     "aggregator_port": "9800",
     "aggregator_secret": "",
     "aggregator_secure": False,
+    "ignore_version_error": False,
     "local_aggregator": True,
 }
 # Local aggregator database
@@ -129,6 +130,7 @@ class PersistentData(JsonData):
         "aggregator_port": 443,
         "aggregator_secure": True,
         "aggregator_secret": "",
+        "ignore_version_error": False,
         "uods": [],
         "local_aggregator": False,
     }
@@ -241,7 +243,7 @@ class EngineManager:
                         logging.getLogger(name).addHandler(self.log_handler)
                         logging.getLogger(name).addHandler(file_handler)
             # Figure out if we are using local aggregator
-            data_source = local_aggregator_data if self.persistent_data['local_aggregator'] else self.persistent_data
+            data_source = local_aggregator_data if self.persistent_data["local_aggregator"] else self.persistent_data
             # Actually start engine
             try:
                 uod = create_uod(uod_filename)
@@ -249,7 +251,8 @@ class EngineManager:
                 log.error(f"Failed to create uod: {ex}")
                 return
             engine = Engine(uod, enable_archiver=True)
-            dispatcher = EngineDispatcher(f"{data_source['aggregator_hostname']}:{data_source['aggregator_port']}", data_source['aggregator_secure'], uod.options, data_source["aggregator_secret"])
+            message_builder = EngineMessageBuilder(engine, data_source["aggregator_secret"], data_source["ignore_version_error"])
+            dispatcher = EngineDispatcher(message_builder, f"{data_source['aggregator_hostname']}:{data_source['aggregator_port']}", data_source["aggregator_secure"], uod.options)
             if len(uod.required_roles) > 0 and not dispatcher.is_aggregator_authentication_enabled():
                 log.warning('"with_required_roles" specified in ' +
                             f'"{uod_filename}" but aggregator does ' +
@@ -275,7 +278,6 @@ class EngineManager:
                 ErrorRecoveryConfig(),
                 connection_status_tag
             )
-            message_builder = EngineMessageBuilder(engine)
             # create runner that orchestrates the error recovery mechanism
             runner = EngineRunner(
                 dispatcher,
@@ -516,7 +518,9 @@ class SettingsWindow(SingletonWindow):
         window.attributes('-topmost', True)
         local_ag_value = tk.BooleanVar()
         ag_ssl_value = tk.BooleanVar()
+        ignore_version_error_value = tk.BooleanVar()
         local_ag_value.set(self.persistent_data["local_aggregator"])
+        ignore_version_error_value.set(self.persistent_data["ignore_version_error"])
 
         # Create GUI elements
         label_local_ag = tk.Label(window, text="Local aggregator")
@@ -524,11 +528,16 @@ class SettingsWindow(SingletonWindow):
         label_ag_port = tk.Label(window, text="Aggregator Port")
         label_ag_ssl = tk.Label(window, text="Aggregator SSL")
         label_ag_secret = tk.Label(window, text="Aggregator Secret")
+        label_ignore_version_error = tk.Label(window, text="Ignore aggregator/engine version deviation")
         entry_ag_hostname = tk.Entry(window)
         entry_ag_port = tk.Entry(window)
         checkbox_ag_ssl = tk.Checkbutton(
             window,
             variable=ag_ssl_value,
+        )
+        checkbox_ignore_version_error = tk.Checkbutton(
+            window,
+            variable=ignore_version_error_value,
         )
         entry_ag_secret = tk.Entry(window)
 
@@ -539,6 +548,7 @@ class SettingsWindow(SingletonWindow):
                 entry_ag_port,
                 checkbox_ag_ssl,
                 entry_ag_secret,
+                checkbox_ignore_version_error,
             ]
             # Select local aggregator data or latest saved data
             data_source = local_aggregator_data if local_ag_value.get() else self.persistent_data
@@ -579,6 +589,7 @@ class SettingsWindow(SingletonWindow):
             [label_ag_port, entry_ag_port],
             [label_ag_ssl, checkbox_ag_ssl],
             [label_ag_secret, entry_ag_secret],
+            [label_ignore_version_error, checkbox_ignore_version_error],
         ]
         row_number = 0
         for row_number, (label, input_widget) in enumerate(layout):
@@ -619,6 +630,7 @@ class SettingsWindow(SingletonWindow):
                         aggregator_port=entry_ag_port.get(),
                         aggregator_secure=ag_ssl_value.get(),
                         aggregator_secret=entry_ag_secret.get(),
+                        ignore_version_error=ignore_version_error_value.get(),
                         local_aggregator=False,
                     ))
             except httpx.HTTPError:
