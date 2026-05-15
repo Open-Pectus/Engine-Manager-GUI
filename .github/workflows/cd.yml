@@ -24,23 +24,20 @@ jobs:
           pyinstaller pyinstaller.spec
           cd dist
           move "Open Pectus Engine Manager.exe" ../
-      - name: Install DigiCert Client tools from Github Custom Actions marketplace
-        uses: digicert/ssm-code-signing@v1.1.1
-      - name: Set up certificate 
-        run: |
-          echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12 
-        shell: bash  
-      - name: Set variables
-        run: |
-          echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV" 
-          echo "SM_API_KEY=${{ secrets.SM_API_KEY }}" >> "$GITHUB_ENV" 
-          echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12" >> "$GITHUB_ENV" 
-          echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" >> "$GITHUB_ENV" 
+      - name: Setup SM_CLIENT_CERT_FILE from base64 secret data
+        run: echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12 
         shell: bash
-      - name: Signing using keypair alias
-        run: |
-           smctl sign --keypair-alias key_1229360753 --input "Open Pectus Engine Manager.exe" --config-file C:\Users\RUNNER~1\AppData\Local\Temp\smtools-windows-x64\pkcs11properties.cfg
-        shell: cmd
+      - name: Setup Software Trust Manager
+        uses: digicert/code-signing-software-trust-action@v1
+        with:
+          simple-signing-mode: true
+          input: Open Pectus Engine Manager.exe
+          keypair-alias: key_1229360753
+        env:
+          SM_HOST: ${{ vars.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE: D:\\Certificate_pkcs12.p12
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
       - uses: ncipollo/release-action@v1
         with:
           artifacts: "Open Pectus Engine Manager.exe"
